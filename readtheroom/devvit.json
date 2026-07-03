@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "read-the-room",
+  "name": "read-the-room-game",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -52,5 +52,8 @@
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build"
+  },
+  "dev": {
+    "subreddit": "read_the_room_gam_dev"
   }
 }
