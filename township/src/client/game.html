@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
+    <link rel="stylesheet" href="game.css" />
+    <title>Littlewick</title>
+  </head>
+
+  <body>
+    <div id="app">
+      <div id="game-container"></div>
+
+      <div id="hud">
+        <div id="town-title">
+          <h1>Littlewick</h1>
+          <span id="population"></span>
+        </div>
+        <div id="me-chip" hidden>
+          <div id="me-id"><span id="me-trade"></span> <strong id="me-name"></strong></div>
+          <div id="me-stats">
+            <span class="stat" id="me-coins" title="Coins">🪙 0</span>
+            <span class="stat" id="me-streak" title="Daily streak">🔥 1</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="claim-bar" hidden>
+        <button id="claim-button">Claim your citizen</button>
+      </div>
+
+      <div id="work-bar" hidden>
+        <div id="task-slots"></div>
+      </div>
+
+      <div id="task-sheet-modal" hidden>
+        <div id="task-sheet">
+          <button id="task-close" aria-label="Close">×</button>
+          <h2>Start a job</h2>
+          <p>Work runs in real time — even while you’re away.</p>
+          <div id="task-list"></div>
+        </div>
+      </div>
+
+      <div id="claim-modal" hidden>
+        <div id="claim-sheet">
+          <button id="claim-close" aria-label="Close">×</button>
+          <h2>Choose your trade</h2>
+          <p>Your citizen lives here — even while you’re away.</p>
+          <div id="trade-grid"></div>
+        </div>
+      </div>
+
+      <div id="toast"></div>
+    </div>
+    <script type="module" src="game.ts"></script>
+  </body>
+</html>
