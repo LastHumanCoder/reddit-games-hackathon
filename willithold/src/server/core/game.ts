@@ -83,15 +83,33 @@ export const getStreaks = async (userId: string): Promise<{ streak: number; best
   return { streak: Number(s ?? '0'), best: Number(b ?? '0') };
 };
 
+const ACC_ZSET = 'acc_z';
+const LB_ZSET = 'lb_z';
+const NAMES_HASH = 'names';
+
+const statsKey = (userId: string) => `stats:${userId}`;
+
+export type MetaStats = {
+  games: number;
+  correctCount: number;
+  accuracy: number;
+  /** "Top X%" among players with 3+ games, or null. */
+  rankTopPct: number | null;
+  /** Last 9 results: 'H'/'C' outcome, uppercase = correct call. */
+  recent: string;
+};
+
 /**
- * Updates the streak after a resolved round. Guarded per user+date so a
- * replayed verdict screen can't double-count.
+ * Updates streak + lifetime stats after a resolved round. Guarded per
+ * user+date so a replayed verdict screen can't double-count.
  */
 export const settleStreak = async (
   postId: string,
   date: string,
   userId: string,
-  correct: boolean
+  username: string,
+  correct: boolean,
+  outcome: Outcome
 ): Promise<{ streak: number; best: number }> => {
   const settledKey = `settled:${postId}:${date}:${userId}`;
   const already = await redis.get(settledKey);
@@ -106,10 +124,81 @@ export const settleStreak = async (
     await redis.set(keys.streak(userId), '0');
     streak = 0;
   }
-  const best = Number((await redis.get(keys.best(userId))) ?? '0');
+  let best = Number((await redis.get(keys.best(userId))) ?? '0');
   if (streak > best) {
     await redis.set(keys.best(userId), String(streak));
-    return { streak, best: streak };
+    best = streak;
   }
+
+  // Lifetime stats (best effort - never let them break the verdict).
+  try {
+    const games = await redis.hIncrBy(statsKey(userId), 'games', 1);
+    const correctCount = correct
+      ? await redis.hIncrBy(statsKey(userId), 'correct', 1)
+      : Number((await redis.hGet(statsKey(userId), 'correct')) ?? '0');
+    const letter = outcome === 'hold' ? 'h' : 'c';
+    const prev = (await redis.hGet(statsKey(userId), 'recent')) ?? '';
+    const recent = (prev + (correct ? letter.toUpperCase() : letter)).slice(-9);
+    await redis.hSet(statsKey(userId), { recent });
+    await redis.hSet(NAMES_HASH, { [userId]: username });
+    if (games >= 3) {
+      await redis.zAdd(ACC_ZSET, { member: userId, score: correctCount / games });
+    }
+    await redis.zAdd(LB_ZSET, { member: userId, score: streak * 1000 + Math.min(best, 999) });
+  } catch (e) {
+    console.error('stats update failed', e);
+  }
+
   return { streak, best };
+};
+
+export const getMetaStats = async (userId: string): Promise<MetaStats> => {
+  const h = await redis.hGetAll(statsKey(userId));
+  const games = Number(h['games'] ?? '0');
+  const correctCount = Number(h['correct'] ?? '0');
+  const recent = h['recent'] ?? '';
+  const accuracy = games > 0 ? Math.round((correctCount / games) * 100) : 0;
+  let rankTopPct: number | null = null;
+  if (games >= 3) {
+    try {
+      const [rank, total] = await Promise.all([
+        redis.zRank(ACC_ZSET, userId),
+        redis.zCard(ACC_ZSET),
+      ]);
+      if (rank !== undefined && total > 0) {
+        // zRank is ascending; convert to "top X%".
+        const better = total - 1 - rank;
+        rankTopPct = Math.max(1, Math.round(((better + 1) / total) * 100));
+      }
+    } catch (e) {
+      console.error('rank lookup failed', e);
+    }
+  }
+  return { games, correctCount, accuracy, rankTopPct, recent };
+};
+
+export type LeaderboardRow = { username: string; streak: number; best: number };
+
+export const getLeaderboardTop = async (
+  userId: string | null
+): Promise<{ top: LeaderboardRow[]; you: LeaderboardRow | null }> => {
+  const rows = await redis.zRange(LB_ZSET, 0, 4, { by: 'rank', reverse: true });
+  const top: LeaderboardRow[] = [];
+  for (const r of rows) {
+    const name = (await redis.hGet(NAMES_HASH, r.member)) ?? 'anonymous';
+    top.push({
+      username: name,
+      streak: Math.floor(r.score / 1000),
+      best: Math.round(r.score % 1000),
+    });
+  }
+  let you: LeaderboardRow | null = null;
+  if (userId) {
+    const name = await redis.hGet(NAMES_HASH, userId);
+    if (name) {
+      const { streak, best } = await getStreaks(userId);
+      you = { username: name, streak, best };
+    }
+  }
+  return { top, you };
 };

@@ -36,6 +36,24 @@ export type ResultResponse = {
   streak: number;
   best: number;
   crowd: Crowd;
+  /** Lifetime accuracy 0-100. */
+  accuracy: number;
+  /** "Top X%" among players with 3+ games, or null when hidden. */
+  rankTopPct: number | null;
+  /** Last 9 results: 'h'/'c' outcome letters, uppercase = correct call. */
+  recent: string;
+};
+
+export type LeaderboardEntry = {
+  username: string;
+  streak: number;
+  best: number;
+};
+
+export type LeaderboardResponse = {
+  type: 'leaderboard';
+  top: LeaderboardEntry[];
+  you: LeaderboardEntry | null;
 };
 
 export type ApiError = {

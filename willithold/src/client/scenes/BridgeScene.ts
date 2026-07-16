@@ -3,9 +3,11 @@ import type {
   Crowd,
   Guess,
   InitResponse,
+  LeaderboardResponse,
   Outcome,
   ResultResponse,
 } from '../../shared/api';
+import { sound } from '../sound';
 
 const W = 800;
 const H = 600;
@@ -80,6 +82,10 @@ export class BridgeScene extends Phaser.Scene {
 
   private buttonItems: Phaser.GameObjects.GameObject[] = [];
   private statusText: Phaser.GameObjects.Text | null = null;
+  private simPill: Phaser.GameObjects.Container | null = null;
+  private simBar: Phaser.GameObjects.Graphics | null = null;
+  private countdownText: Phaser.GameObjects.Text | null = null;
+  private muteBtn: Phaser.GameObjects.Text | null = null;
 
   constructor() {
     super('BridgeScene');
@@ -106,12 +112,31 @@ export class BridgeScene extends Phaser.Scene {
     this.splashed = false;
     this.buttonItems = [];
     this.statusText = null;
+    this.simPill = null;
+    this.simBar = null;
+    this.countdownText = null;
+    this.muteBtn = null;
   }
 
   create() {
     this.makeTextures();
     this.drawBackdrop();
     this.addAmbientLife();
+    this.addVignette();
+    this.addHud();
+
+    // WebAudio needs a user gesture; first tap anywhere warms it up.
+    this.input.on('pointerdown', () => sound.ensure());
+
+    if (!this.practice) {
+      let seen = false;
+      try {
+        seen = localStorage.getItem('wih-howto') === '1';
+      } catch {
+        seen = true;
+      }
+      if (!seen) this.time.delayedCall(400, () => this.showHowTo());
+    }
 
     if (this.practice) {
       this.rand = mulberry32(this.runSeed);
@@ -200,21 +225,40 @@ export class BridgeScene extends Phaser.Scene {
 
     if (!this.textures.exists('truck')) {
       const g = this.add.graphics();
-      // Cargo bed (left 2/3).
-      g.fillStyle(0xb03a3a, 1);
-      g.fillRoundedRect(0, 10, 52, 24, 3);
+      // Chunky painterly pickup, facing right. Two-tone body.
+      // Cargo bed (left).
+      g.fillStyle(0x9e3434, 1);
+      g.fillRoundedRect(0, 12, 50, 22, { tl: 5, tr: 2, bl: 3, br: 0 });
       g.fillStyle(0xc94747, 1);
-      g.fillRoundedRect(2, 12, 48, 12, 2);
-      // Cab (right 1/3), slightly taller.
+      g.fillRoundedRect(2, 12, 46, 11, { tl: 4, tr: 2, bl: 0, br: 0 });
+      // Bed rail highlight.
+      g.fillStyle(0xe06a5a, 1);
+      g.fillRect(2, 12, 46, 3);
+      // Cab (right), rounded roof.
       g.fillStyle(0xd64545, 1);
-      g.fillRoundedRect(50, 2, 32, 32, 4);
-      // Window.
-      g.fillStyle(0xbfe3ef, 1);
-      g.fillRoundedRect(58, 6, 18, 12, 3);
-      // Bumper.
+      g.fillRoundedRect(46, 2, 36, 32, { tl: 10, tr: 9, bl: 0, br: 3 });
+      // Cab lower two-tone shadow.
+      g.fillStyle(0xa93a3a, 1);
+      g.fillRect(46, 24, 36, 10);
+      // Windshield.
+      g.fillStyle(0x9fd4e8, 1);
+      g.fillRoundedRect(55, 6, 22, 13, { tl: 7, tr: 7, bl: 2, br: 2 });
+      // Windshield glint.
+      g.fillStyle(0xe6f6fc, 0.9);
+      g.fillTriangle(60, 6, 68, 6, 57, 19);
+      // Window pillar.
+      g.fillStyle(0xd64545, 1);
+      g.fillRect(65, 6, 3, 13);
+      // Dark wheel wells.
+      g.fillStyle(0x3a2620, 1);
+      g.fillCircle(14, 34, 10);
+      g.fillCircle(66, 34, 10);
+      // Front bumper + headlight.
       g.fillStyle(0x8a2f2f, 1);
-      g.fillRect(78, 26, 6, 8);
-      g.generateTexture('truck', 84, 36);
+      g.fillRect(80, 24, 4, 10);
+      g.fillStyle(0xffd98a, 1);
+      g.fillRect(80, 20, 4, 4);
+      g.generateTexture('truck', 84, 40);
       g.destroy();
     }
 
@@ -251,6 +295,41 @@ export class BridgeScene extends Phaser.Scene {
       g.strokePath();
       g.generateTexture('bird', 12, 8);
       g.destroy();
+    }
+
+    // Film-grain noise, tiled at low alpha over the cliffs for texture.
+    if (!this.textures.exists('grain')) {
+      const size = 160;
+      const tex = this.textures.createCanvas('grain', size, size);
+      if (tex) {
+        const c = tex.getContext();
+        const imgData = c.createImageData(size, size);
+        const rnd = mulberry32(99);
+        for (let i = 0; i < imgData.data.length; i += 4) {
+          const v = 90 + Math.floor(rnd() * 130);
+          imgData.data[i] = v;
+          imgData.data[i + 1] = v;
+          imgData.data[i + 2] = v;
+          imgData.data[i + 3] = Math.floor(rnd() * 46);
+        }
+        c.putImageData(imgData, 0, 0);
+        tex.refresh();
+      }
+    }
+
+    // Radial vignette for the cinematic edge darkening.
+    if (!this.textures.exists('vignette')) {
+      const tex = this.textures.createCanvas('vignette', 400, 300);
+      if (tex) {
+        const c = tex.getContext();
+        const grad = c.createRadialGradient(200, 150, 90, 200, 150, 250);
+        grad.addColorStop(0, 'rgba(30,15,8,0)');
+        grad.addColorStop(0.75, 'rgba(30,15,8,0.08)');
+        grad.addColorStop(1, 'rgba(30,15,8,0.4)');
+        c.fillStyle = grad;
+        c.fillRect(0, 0, 400, 300);
+        tex.refresh();
+      }
     }
   }
 
@@ -306,56 +385,125 @@ export class BridgeScene extends Phaser.Scene {
     g.fillEllipse(320, 740, 640, 380);
     g.fillEllipse(560, 760, 620, 360);
 
-    // Water at the bottom of the ravine.
+    const cliffTop = DECK_Y + 14;
+
+    // River winding through the ravine floor with a soft bank.
+    g.fillStyle(0x6e5138, 1);
+    g.fillRect(GAP_LEFT - 30, WATER_Y - 14, GAP_RIGHT - GAP_LEFT + 60, H - WATER_Y + 14);
     g.fillStyle(0x40616f, 1);
     g.fillRect(GAP_LEFT - 30, WATER_Y, GAP_RIGHT - GAP_LEFT + 60, H - WATER_Y);
-    g.lineStyle(2, 0x6d8d9a, 0.7);
-    g.lineBetween(GAP_LEFT, WATER_Y + 8, GAP_LEFT + 120, WATER_Y + 8);
-    g.lineBetween(GAP_LEFT + 190, WATER_Y + 16, GAP_LEFT + 330, WATER_Y + 16);
-    g.lineBetween(GAP_LEFT + 90, WATER_Y + 26, GAP_LEFT + 240, WATER_Y + 26);
+    // Winding bends suggested by stacked lighter curves.
+    g.fillStyle(0x527a8a, 0.9);
+    g.fillEllipse(W / 2 - 60, WATER_Y + 14, 260, 22);
+    g.fillEllipse(W / 2 + 90, WATER_Y + 34, 300, 26);
+    // Glint highlights.
+    g.lineStyle(2, 0xbfe3ef, 0.8);
+    g.lineBetween(GAP_LEFT + 40, WATER_Y + 9, GAP_LEFT + 140, WATER_Y + 9);
+    g.lineBetween(GAP_LEFT + 210, WATER_Y + 19, GAP_LEFT + 320, WATER_Y + 19);
+    g.lineBetween(GAP_LEFT + 110, WATER_Y + 30, GAP_LEFT + 230, WATER_Y + 30);
+    g.lineStyle(1.5, 0xfff3c4, 0.5);
+    g.lineBetween(GAP_LEFT + 170, WATER_Y + 13, GAP_LEFT + 250, WATER_Y + 13);
 
-    // Cliff columns with stone joints.
-    const cliffTop = DECK_Y + 14;
-    g.fillStyle(0x5b4232, 1);
-    g.fillRect(0, cliffTop, GAP_LEFT, H - cliffTop);
-    g.fillRect(GAP_RIGHT, cliffTop, W - GAP_RIGHT, H - cliffTop);
-    g.lineStyle(2, 0x4a3527, 0.6);
+    // Layered canyon cliff faces (3 tones per side, back → front).
+    const cliff = (x0: number, x1: number, mirror: boolean) => {
+      const w = x1 - x0;
+      // Back face (lighter, sun-washed).
+      g.fillStyle(0x7a5940, 1);
+      g.fillRect(x0, cliffTop, w, H - cliffTop);
+      // Mid ledge face.
+      g.fillStyle(0x654733, 1);
+      const inset = mirror ? 0 : Math.floor(w * 0.22);
+      g.fillRect(x0 + (mirror ? Math.floor(w * 0.22) : 0), cliffTop + 60, w - Math.floor(w * 0.22), H);
+      // Front (darkest) column near the gap edge.
+      g.fillStyle(0x523a2a, 1);
+      const frontW = Math.floor(w * 0.34);
+      g.fillRect(mirror ? x0 : x1 - frontW, cliffTop + 24, frontW, H);
+      void inset;
+    };
+    cliff(0, GAP_LEFT, false);
+    cliff(GAP_RIGHT, W, true);
+
+    // Rock strata lines across both cliffs.
     const stoneRand = mulberry32(7);
-    for (let y = cliffTop + 22; y < H - 20; y += 26) {
-      const jL = stoneRand() * 14;
-      const jR = stoneRand() * 14;
-      g.lineBetween(0, y + jL, GAP_LEFT - 6, y + jL * 0.6);
-      g.lineBetween(GAP_RIGHT + 6, y + jR * 0.6, W, y + jR);
-      g.lineBetween(40 + stoneRand() * 90, y + jL, 40 + stoneRand() * 90, y + jL + 20);
-      g.lineBetween(
-        GAP_RIGHT + 30 + stoneRand() * 100,
-        y + jR,
-        GAP_RIGHT + 30 + stoneRand() * 100,
-        y + jR + 20
-      );
+    for (let y = cliffTop + 20; y < H - 30; y += 22) {
+      const jL = stoneRand() * 12;
+      const jR = stoneRand() * 12;
+      g.lineStyle(2, 0x43301f, 0.55);
+      g.lineBetween(0, y + jL, GAP_LEFT - 4, y + jL * 0.5);
+      g.lineBetween(GAP_RIGHT + 4, y + jR * 0.5, W, y + jR);
+      // Occasional vertical crack.
+      if (stoneRand() < 0.5) {
+        g.lineBetween(30 + stoneRand() * 110, y + jL, 34 + stoneRand() * 110, y + jL + 16);
+      }
+      if (stoneRand() < 0.5) {
+        g.lineBetween(GAP_RIGHT + 30 + stoneRand() * 110, y + jR, GAP_RIGHT + 34 + stoneRand() * 110, y + jR + 16);
+      }
+      // Warm strata highlight just under each line.
+      g.lineStyle(1, 0x8f6a49, 0.35);
+      g.lineBetween(0, y + jL + 3, GAP_LEFT - 4, y + jL * 0.5 + 3);
+      g.lineBetween(GAP_RIGHT + 4, y + jR * 0.5 + 3, W, y + jR + 3);
     }
+
+    // Warm rim light along the cliff tops and gap edges.
+    g.lineStyle(3, 0xffd98a, 0.65);
+    g.lineBetween(0, cliffTop, GAP_LEFT, cliffTop);
+    g.lineBetween(GAP_RIGHT, cliffTop, W, cliffTop);
+    g.lineStyle(2, 0xffc27d, 0.4);
+    g.lineBetween(GAP_LEFT - 1, cliffTop, GAP_LEFT - 1, cliffTop + 130);
+    g.lineBetween(GAP_RIGHT + 1, cliffTop, GAP_RIGHT + 1, cliffTop + 130);
+
     // Bedrock strip.
     g.fillStyle(0x35261b, 1);
     g.fillRect(0, H - 34, W, 34);
 
-    // Grass tufts along cliff edges.
-    g.fillStyle(0x7d8f4e, 1);
+    // Grass tufts + bushes along cliff edges.
     const tuftRand = mulberry32(13);
     const tuft = (x: number) => {
+      g.fillStyle(0x7d8f4e, 1);
       const s = 3 + tuftRand() * 3;
       g.fillTriangle(x, DECK_Y, x - s, DECK_Y + 1, x - s * 0.4, DECK_Y - s * 2);
       g.fillTriangle(x, DECK_Y, x + s, DECK_Y + 1, x + s * 0.4, DECK_Y - s * 1.6);
     };
-    for (let x = 14; x < GAP_LEFT - 20; x += 22 + tuftRand() * 26) tuft(x);
+    const bush = (x: number) => {
+      const r = 5 + tuftRand() * 4;
+      g.fillStyle(0x5e7040, 1);
+      g.fillCircle(x, DECK_Y - r * 0.5, r);
+      g.fillCircle(x - r * 0.8, DECK_Y - r * 0.2, r * 0.7);
+      g.fillCircle(x + r * 0.8, DECK_Y - r * 0.2, r * 0.7);
+      g.fillStyle(0x76894c, 1);
+      g.fillCircle(x - r * 0.3, DECK_Y - r * 0.7, r * 0.55);
+    };
+    for (let x = 14; x < GAP_LEFT - 24; x += 22 + tuftRand() * 26) tuft(x);
     for (let x = GAP_RIGHT + 18; x < W - 10; x += 22 + tuftRand() * 26) tuft(x);
+    bush(46);
+    bush(126);
+    bush(GAP_RIGHT + 64);
+    bush(W - 46);
 
-    // Cable towers.
+    // Suspension towers.
+    const towerH = 96;
     g.fillStyle(0x4a3527, 1);
-    g.fillRect(GAP_LEFT - 14, DECK_Y - 96, 14, 96);
-    g.fillRect(GAP_RIGHT, DECK_Y - 96, 14, 96);
+    g.fillRect(GAP_LEFT - 14, DECK_Y - towerH, 14, towerH);
+    g.fillRect(GAP_RIGHT, DECK_Y - towerH, 14, towerH);
+    // Tower warm-lit face.
     g.fillStyle(0x6b4c3a, 1);
-    g.fillRect(GAP_LEFT - 16, DECK_Y - 100, 18, 6);
-    g.fillRect(GAP_RIGHT - 2, DECK_Y - 100, 18, 6);
+    g.fillRect(GAP_LEFT - 14, DECK_Y - towerH, 5, towerH);
+    g.fillRect(GAP_RIGHT, DECK_Y - towerH, 5, towerH);
+    // Caps.
+    g.fillStyle(0x6b4c3a, 1);
+    g.fillRect(GAP_LEFT - 16, DECK_Y - towerH - 4, 18, 6);
+    g.fillRect(GAP_RIGHT - 2, DECK_Y - towerH - 4, 18, 6);
+    // Cross braces.
+    g.lineStyle(3, 0x3a2a1e, 1);
+    g.lineBetween(GAP_LEFT - 14, DECK_Y - 30, GAP_LEFT, DECK_Y - 60);
+    g.lineBetween(GAP_RIGHT, DECK_Y - 60, GAP_RIGHT + 14, DECK_Y - 30);
+
+    // Grain overlay across the cliffs + hills for the painterly feel.
+    for (let gx = 0; gx < W; gx += 160) {
+      for (let gy = 240; gy < H; gy += 160) {
+        this.add.image(gx + 80, gy + 80, 'grain').setAlpha(0.5).setDepth(-9.5);
+      }
+    }
   }
 
   private addAmbientLife() {
@@ -401,6 +549,156 @@ export class BridgeScene extends Phaser.Scene {
         frequency: 420,
       })
       .setDepth(-7);
+  }
+
+  private addVignette() {
+    this.add.image(W / 2, H / 2, 'vignette').setDisplaySize(W, H).setDepth(40);
+  }
+
+  // ---------- HUD (mute, countdown, help) ----------
+
+  private addHud() {
+    // Mute toggle.
+    this.muteBtn = this.mkText(W - 26, 24, sound.muted ? '🔇' : '🔊', 22, '#ffffff')
+      .setOrigin(0.5)
+      .setDepth(95)
+      .setInteractive({ useHandCursor: true });
+    this.muteBtn.on('pointerdown', () => {
+      sound.ensure();
+      const muted = sound.toggle();
+      this.muteBtn?.setText(muted ? '🔇' : '🔊');
+    });
+
+    // Help button.
+    const help = this.mkText(W - 62, 24, '?', 20, '#3c2415')
+      .setOrigin(0.5)
+      .setDepth(95)
+      .setBackgroundColor('#ffd98a')
+      .setPadding(8, 2, 8, 2)
+      .setInteractive({ useHandCursor: true });
+    help.on('pointerdown', () => {
+      sound.click();
+      this.showHowTo();
+    });
+
+    // Countdown to the next daily bridge (00:00 UTC).
+    const chipBg = this.add.graphics().setDepth(94);
+    chipBg.fillStyle(0x2e2622, 0.75);
+    chipBg.fillRoundedRect(W - 240, 44, 214, 26, 13);
+    this.countdownText = this.mkText(W - 133, 57, '', 13, '#ffd98a', {
+      fontFamily: 'Arial, sans-serif',
+    })
+      .setOrigin(0.5)
+      .setDepth(95);
+    this.updateCountdown();
+    this.time.addEvent({ delay: 1000, loop: true, callback: () => this.updateCountdown() });
+  }
+
+  private updateCountdown() {
+    if (!this.countdownText || !this.countdownText.active) return;
+    const now = new Date();
+    const next = new Date(now);
+    next.setUTCHours(24, 0, 0, 0);
+    const ms = next.getTime() - now.getTime();
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    this.countdownText.setText(`⏳ next bridge in ${pad(h)}:${pad(m)}:${pad(s)}`);
+  }
+
+  // ---------- how to play ----------
+
+  private showHowTo() {
+    try {
+      localStorage.setItem('wih-howto', '1');
+    } catch {
+      /* fine */
+    }
+    const layer = this.add.container(0, 0).setDepth(120);
+    const dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1a120c, 0.55).setInteractive();
+    layer.add(dim);
+    const card = this.add.graphics();
+    card.fillStyle(0x2e2622, 0.97);
+    card.fillRoundedRect(120, 110, W - 240, 380, 24);
+    card.lineStyle(2, 0xe8892c, 0.6);
+    card.strokeRoundedRect(120, 110, W - 240, 380, 24);
+    layer.add(card);
+    layer.add(this.mkText(W / 2, 152, 'HOW TO PLAY', 30, '#ffd98a').setOrigin(0.5));
+
+    const rows: [string, string][] = [
+      ['🔍', 'Study the bridge. Sketchy planks? Missing hangers?'],
+      ['🟢🔴', 'Call it: HOLD or COLLAPSE. One call per day.'],
+      ['⚙️', 'Physics decides. No tricks, no scripts.'],
+      ['🔥', 'Nail it daily to build your streak.'],
+    ];
+    rows.forEach(([icon, text], i) => {
+      const y = 210 + i * 56;
+      layer.add(this.mkText(172, y, icon, 22, '#ffffff').setOrigin(0.5));
+      layer.add(
+        this.mkText(206, y, text, 17, '#ffffff', {
+          fontFamily: 'Arial, sans-serif',
+          wordWrap: { width: W - 350 },
+        }).setOrigin(0, 0.5)
+      );
+    });
+
+    const gotIt = this.makeButton(
+      W / 2,
+      448,
+      'GOT IT',
+      0xe8892c,
+      0xb5661c,
+      () => {
+        gotIt.destroy();
+        layer.destroy();
+      },
+      220,
+      52,
+      22
+    );
+    gotIt.setDepth(121);
+    dim.on('pointerdown', () => {
+      gotIt.destroy();
+      layer.destroy();
+    });
+  }
+
+  // ---------- sim progress pill ----------
+
+  private showSimPill() {
+    const pillW = 320;
+    const pillH = 44;
+    const g = this.add.graphics();
+    g.fillStyle(0x2e2622, 0.88);
+    g.fillRoundedRect(-pillW / 2, -pillH / 2, pillW, pillH, 22);
+    g.lineStyle(1.5, 0xe8892c, 0.5);
+    g.strokeRoundedRect(-pillW / 2, -pillH / 2, pillW, pillH, 22);
+    const icon = this.mkText(-pillW / 2 + 26, 0, '🚚', 18, '#ffffff').setOrigin(0.5);
+    const label = this.mkText(6, -6, 'SIMULATION RUNNING…', 14, '#ffd98a').setOrigin(0.5);
+    this.simBar = this.add.graphics();
+    this.simBar.y = 10;
+    const track = this.add.graphics();
+    track.fillStyle(0x1a120c, 1);
+    track.fillRoundedRect(-100, 6, 240, 8, 4);
+    this.simPill = this.add
+      .container(W / 2, H - 44, [g, track, this.simBar, icon, label])
+      .setDepth(65);
+  }
+
+  private updateSimPill() {
+    if (!this.simBar || !this.chassis) return;
+    // Progress = how far across the truck is.
+    const p = Phaser.Math.Clamp((this.chassis.position.x - 70) / (GAP_RIGHT + 60 - 70), 0, 1);
+    this.simBar.clear();
+    this.simBar.fillStyle(0xe8892c, 1);
+    this.simBar.fillRoundedRect(-100, -4, Math.max(10, 240 * p), 8, 4);
+  }
+
+  private destroySimPill() {
+    this.simPill?.destroy();
+    this.simPill = null;
+    this.simBar = null;
   }
 
   // ---------- bridge generation ----------
@@ -514,25 +812,64 @@ export class BridgeScene extends Phaser.Scene {
     this.drawCables();
   }
 
-  /** Cables drawn with a slight sag curve, re-drawn every frame. */
+  /** Suspension-bridge rendering: main catenary + hangers, every frame. */
   private drawCables() {
     if (!this.cableG) return;
-    this.cableG.clear();
-    this.cableG.lineStyle(2.5, 0x4a3527, 1);
-    for (const { plank, ax, ay } of this.supports) {
+    const g = this.cableG;
+    g.clear();
+
+    const lx = GAP_LEFT - 7;
+    const rx = GAP_RIGHT + 7;
+    const towerY = DECK_Y - 96;
+    const sagY = DECK_Y - 26;
+    const catY = (x: number) => {
+      // Parabola through both tower tops, dipping to sagY at midspan.
+      const mid = (lx + rx) / 2;
+      const half = (rx - lx) / 2;
+      const t = (x - mid) / half; // -1..1
+      return sagY + (towerY - sagY) * t * t;
+    };
+
+    // Main catenary cable (doubled line for weight).
+    g.lineStyle(3.5, 0x3a2a1e, 1);
+    g.beginPath();
+    g.moveTo(lx, towerY);
+    for (let x = lx; x <= rx; x += 12) g.lineTo(x, catY(x));
+    g.lineTo(rx, towerY);
+    g.strokePath();
+    g.lineStyle(1, 0x8f6a49, 0.7);
+    g.beginPath();
+    g.moveTo(lx, towerY - 2);
+    for (let x = lx; x <= rx; x += 12) g.lineTo(x, catY(x) - 2);
+    g.lineTo(rx, towerY - 2);
+    g.strokePath();
+
+    // Anchor cables from the tower tops back to the cliff tops.
+    g.lineStyle(2.5, 0x3a2a1e, 1);
+    g.lineBetween(lx, towerY, GAP_LEFT - 70, DECK_Y - 2);
+    g.lineBetween(rx, towerY, GAP_RIGHT + 70, DECK_Y - 2);
+
+    // Vertical hangers to each plank. Planks with a real (physics) support
+    // cable get a full hanger; unsupported planks show a frayed stub - the
+    // engineering tell.
+    const supported = new Set(this.supports.map((s) => s.plank));
+    for (const plank of this.planks) {
       const px = plank.position.x;
-      const py = plank.position.y - 5;
-      const midX = (ax + px) / 2;
-      const midY = (ay + py) / 2 + 8; // sag
-      this.cableG.beginPath();
-      this.cableG.moveTo(ax, ay);
-      for (let t = 0.125; t <= 1.001; t += 0.125) {
-        const it = 1 - t;
-        const x = it * it * ax + 2 * it * t * midX + t * t * px;
-        const y = it * it * ay + 2 * it * t * midY + t * t * py;
-        this.cableG.lineTo(x, y);
+      const py = plank.position.y - 6;
+      const cy = catY(Phaser.Math.Clamp(px, lx, rx));
+      if (supported.has(plank)) {
+        g.lineStyle(2, 0x4a3527, 1);
+        g.lineBetween(px, cy, px, py);
+        // Clamp dot at the deck.
+        g.fillStyle(0x2e2622, 1);
+        g.fillCircle(px, py, 1.8);
+      } else if (!this.resolved && this.phase !== 'running') {
+        // Frayed stub dangling from the main cable.
+        g.lineStyle(2, 0x4a3527, 0.9);
+        g.lineBetween(px, cy, px + 2, cy + 12);
+        g.lineStyle(1.5, 0x4a3527, 0.7);
+        g.lineBetween(px + 2, cy + 12, px - 1, cy + 17);
       }
-      this.cableG.strokePath();
     }
   }
 
@@ -624,6 +961,8 @@ export class BridgeScene extends Phaser.Scene {
     c.setSize(w, h);
     c.setInteractive({ useHandCursor: true });
     c.on('pointerdown', () => {
+      sound.ensure();
+      sound.click();
       // Press-down effect, then act.
       c.y += 4;
       this.time.delayedCall(90, () => {
@@ -635,12 +974,17 @@ export class BridgeScene extends Phaser.Scene {
   }
 
   private showChoiceButtons() {
-    const promptStr = this.practice
-      ? 'PRACTICE BRIDGE\nNo stakes. Call it anyway.'
-      : 'The truck is about to cross.\nCall it.';
-    const prompt = this.mkText(W / 2, 90, promptStr, 30, '#3c2415', { align: 'center' }).setOrigin(
-      0.5
-    );
+    const title = this.mkText(W / 2, 66, this.practice ? 'PRACTICE BRIDGE' : 'WILL IT HOLD?', 42, '#3c2415').setOrigin(0.5);
+    const caption = this.mkText(
+      W / 2,
+      104,
+      this.practice
+        ? 'No stakes. Call it anyway.'
+        : 'Lock in your call before the truck crosses.',
+      17,
+      '#6b4226',
+      { fontFamily: 'Arial, sans-serif' }
+    ).setOrigin(0.5);
 
     const holdBtn = this.makeButton(W / 2, 470, '🟢  HOLD', 0x3f9d5a, 0x2c6e3f, () => {
       void this.choose('hold');
@@ -648,7 +992,7 @@ export class BridgeScene extends Phaser.Scene {
     const collapseBtn = this.makeButton(W / 2, 560, '🔴  COLLAPSE', 0xd64545, 0xa83232, () => {
       void this.choose('collapse');
     });
-    this.buttonItems = [prompt, holdBtn, collapseBtn];
+    this.buttonItems = [title, caption, holdBtn, collapseBtn];
 
     if (this.practice) {
       const best = Number(this.registry.get('practiceBest') ?? 0);
@@ -721,6 +1065,8 @@ export class BridgeScene extends Phaser.Scene {
     this.simStartedAt = this.time.now;
     this.matter.world.resume();
     this.exhaust?.start();
+    this.showSimPill();
+    sound.creak();
   }
 
   override update(time: number) {
@@ -742,6 +1088,8 @@ export class BridgeScene extends Phaser.Scene {
     }
 
     if (this.phase !== 'running' || this.resolved) return;
+
+    this.updateSimPill();
 
     const truckY = this.chassis?.position.y ?? 0;
     const truckX = this.chassis?.position.x ?? 0;
@@ -774,6 +1122,7 @@ export class BridgeScene extends Phaser.Scene {
       const wet = truckY > WATER_Y - 20 || this.planks.some((p) => p.position.y > WATER_Y - 12);
       if (wet) {
         this.splashed = true;
+        sound.splash();
         const sx = truckY > WATER_Y - 20 ? truckX : W / 2;
         this.add
           .particles(sx, WATER_Y, 'px', {
@@ -811,8 +1160,11 @@ export class BridgeScene extends Phaser.Scene {
     this.resolved = true;
     this.phase = 'done';
     this.exhaust?.stop();
+    this.destroySimPill();
 
     if (outcome === 'collapse') {
+      sound.crack();
+      sound.rumble();
       this.cameras.main.shake(400, 0.012);
       this.add
         .particles(W / 2, DECK_Y, 'px', {
@@ -825,6 +1177,8 @@ export class BridgeScene extends Phaser.Scene {
         })
         .explode(40, W / 2, DECK_Y);
     } else {
+      sound.chime();
+      sound.honk();
       this.add
         .particles(W / 2, 120, 'px', {
           speed: { min: 80, max: 240 },
@@ -874,13 +1228,34 @@ export class BridgeScene extends Phaser.Scene {
 
     const layer = this.add.container(0, 0).setDepth(80);
 
+    // Confetti burst behind the card on a correct call.
+    if (correct && this.guess) {
+      this.add
+        .particles(W / 2, 80, 'px', {
+          speed: { min: 120, max: 320 },
+          angle: { min: 40, max: 140 },
+          lifespan: 1600,
+          gravityY: 300,
+          quantity: 2,
+          scale: { start: 1.3, end: 0 },
+          rotate: { start: 0, end: 360 },
+          tint: [0xffe066, 0x3f9d5a, 0xd64545, 0x4a90d9, 0xe8892c],
+          emitting: true,
+          frequency: 40,
+          stopAfter: 60,
+        })
+        .setDepth(79);
+    }
+
     const bg = this.add.graphics();
-    bg.fillStyle(0x2e2622, 0.85);
-    bg.fillRoundedRect(60, 88, W - 120, 424, 24);
+    bg.fillStyle(0x241c16, 0.93);
+    bg.fillRoundedRect(60, 84, W - 120, 436, 24);
+    bg.lineStyle(2, 0xe8892c, 0.55);
+    bg.strokeRoundedRect(60, 84, W - 120, 436, 24);
     layer.add(bg);
 
     if (this.practice) {
-      const badge = this.mkText(W / 2, 112, 'PRACTICE', 14, '#2e2622');
+      const badge = this.mkText(W / 2, 108, 'PRACTICE', 14, '#2e2622');
       badge.setOrigin(0.5).setBackgroundColor('#ffd98a').setPadding(8, 3, 8, 3);
       layer.add(badge);
     }
@@ -888,13 +1263,12 @@ export class BridgeScene extends Phaser.Scene {
     const held = finalOutcome === 'hold';
     const title = this.mkText(
       W / 2,
-      166,
-      held ? 'IT HELD' : 'IT COLLAPSED',
-      54,
+      150,
+      held ? 'IT HELD!' : 'IT COLLAPSED!',
+      50,
       held ? '#7fe08a' : '#ff7a7a'
     ).setOrigin(0.5);
     layer.add(title);
-    // Slam-in.
     title.setScale(2.6).setAlpha(0);
     this.tweens.add({ targets: title, scale: 1, alpha: 1, duration: 420, ease: 'Back.easeOut' });
 
@@ -907,14 +1281,13 @@ export class BridgeScene extends Phaser.Scene {
           ? 'Nope. Practice run reset.'
           : 'You did NOT call it. Streak reset.'
       : 'You watched from a safe distance.';
-    const you = this.mkText(W / 2, 226, youLine, 22, '#ffffff', {
+    const you = this.mkText(W / 2, 198, youLine, 21, '#ffffff', {
       fontFamily: 'Arial, sans-serif',
     }).setOrigin(0.5);
     layer.add(you);
 
-    // Pulsing streak flame.
     if (correct && streak > 0) {
-      const flame = this.mkText(W / 2 + you.width / 2 + 20, 226, '🔥', 22, '#ffffff').setOrigin(0.5);
+      const flame = this.mkText(W / 2 + you.width / 2 + 20, 198, '🔥', 21, '#ffffff').setOrigin(0.5);
       layer.add(flame);
       this.tweens.add({
         targets: flame,
@@ -929,83 +1302,224 @@ export class BridgeScene extends Phaser.Scene {
     const roasts = held ? ROASTS_HOLD : ROASTS_COLLAPSE;
     const roast = roasts[this.runSeed % roasts.length] ?? roasts[0] ?? '';
     layer.add(
-      this.mkText(W / 2, 266, `“${roast}”`, 18, '#ffd98a', {
+      this.mkText(W / 2, 234, `“${roast}”`, 17, '#ffd98a', {
         fontFamily: 'Georgia, serif',
         fontStyle: 'italic',
-        wordWrap: { width: W - 200 },
+        wordWrap: { width: W - 220 },
         align: 'center',
       }).setOrigin(0.5)
     );
 
-    // Crowd split bar with animated fill + count-up (daily mode only).
     if (!this.practice) {
+      // Community split as an animated donut chart.
       const total = crowd.hold + crowd.collapse;
       const holdPct = total > 0 ? Math.round((crowd.hold / total) * 100) : 50;
-      const barX = 140;
-      const barW = W - 280;
-      const barY = 326;
-      const bar = this.add.graphics();
-      layer.add(bar);
-      const label = this.mkText(W / 2, barY - 20, '', 16, '#ffffff', {
+      const cx = W / 2;
+      const cy = 318;
+      const radius = 44;
+      const donut = this.add.graphics();
+      layer.add(donut);
+      const centerLabel = this.mkText(cx, cy - 8, '', 15, '#ffffff').setOrigin(0.5);
+      const centerSub = this.mkText(cx, cy + 12, total > 0 ? `${total} calls` : 'first!', 12, '#b8a88f', {
         fontFamily: 'Arial, sans-serif',
       }).setOrigin(0.5);
-      layer.add(label);
+      layer.add(centerLabel);
+      layer.add(centerSub);
+      const holdLabel = this.mkText(cx - 150, cy, '', 18, '#7fe08a').setOrigin(0.5);
+      const collapseLabel = this.mkText(cx + 158, cy, '', 18, '#ff7a7a').setOrigin(0.5);
+      layer.add(holdLabel);
+      layer.add(collapseLabel);
       const counter = { v: 0 };
       this.tweens.add({
         targets: counter,
-        v: holdPct,
+        v: 1,
         duration: 900,
         ease: 'Cubic.easeOut',
         onUpdate: () => {
-          const pct = counter.v;
-          bar.clear();
-          bar.fillStyle(0x3f9d5a, 1);
-          bar.fillRoundedRect(barX, barY, Math.max(8, (barW * pct) / 100), 26, 8);
-          bar.fillStyle(0xd64545, 1);
-          bar.fillRoundedRect(
-            barX + (barW * pct) / 100,
-            barY,
-            Math.max(8, barW * (1 - pct / 100)),
-            26,
-            8
-          );
-          label.setText(
-            total > 0
-              ? `${Math.round(pct)}% of the crowd said HOLD (${total} calls)`
-              : 'You were first on the scene.'
-          );
+          const t = counter.v;
+          const sweepHold = Phaser.Math.DegToRad(360 * (holdPct / 100) * t);
+          const sweepAll = Phaser.Math.DegToRad(360 * t);
+          const start = -Math.PI / 2;
+          donut.clear();
+          donut.lineStyle(16, 0x3f9d5a, 1);
+          donut.beginPath();
+          donut.arc(cx, cy, radius, start, start + sweepHold, false);
+          donut.strokePath();
+          donut.lineStyle(16, 0xd64545, 1);
+          donut.beginPath();
+          donut.arc(cx, cy, radius, start + sweepHold, start + sweepAll, false);
+          donut.strokePath();
+          const p = Math.round(holdPct * t);
+          centerLabel.setText(`${p}%`);
+          holdLabel.setText(`HOLD ${p}%`);
+          collapseLabel.setText(`COLLAPSE ${Math.round(100 * t) - p}%`);
         },
       });
 
+      // Accuracy + rank row.
+      const acc = result?.accuracy ?? null;
+      const rank = result?.rankTopPct ?? null;
+      if (acc !== null) {
+        const rankStr = rank !== null ? `   ·   Rank: Top ${rank}%` : '';
+        layer.add(
+          this.mkText(W / 2, 392, `Your accuracy: ${acc}%${rankStr}`, 16, '#ffffff', {
+            fontFamily: 'Arial, sans-serif',
+          }).setOrigin(0.5)
+        );
+      }
+
+      // Recent results: last 9 games as H/C dots.
+      const recent = result?.recent ?? '';
+      if (recent.length > 0) {
+        const startX = W / 2 - ((recent.length - 1) * 26) / 2;
+        for (let i = 0; i < recent.length; i++) {
+          const ch = recent[i] ?? 'h';
+          const wasCorrect = ch === ch.toUpperCase();
+          const dot = this.add.circle(startX + i * 26, 422, 10, wasCorrect ? 0x3f9d5a : 0xd64545);
+          layer.add(dot);
+          layer.add(
+            this.mkText(startX + i * 26, 422, ch.toUpperCase(), 11, '#ffffff').setOrigin(0.5)
+          );
+        }
+      }
+
       layer.add(
-        this.mkText(W / 2, 386, 'Come back tomorrow - new bridge daily.', 18, '#ffd98a', {
+        this.mkText(W / 2, 508, 'Come back tomorrow - new bridge daily.', 14, '#ffd98a', {
           fontFamily: 'Arial, sans-serif',
         }).setOrigin(0.5)
       );
     }
 
-    // Practice loop button (kept top-level so its hit area works).
-    const btnLabel = this.practice ? '▶  NEXT BRIDGE' : '▶  PLAY PRACTICE BRIDGES';
-    this.makeButton(
-      W / 2,
-      452,
-      btnLabel,
-      0xe8892c,
-      0xb5661c,
-      () => {
-        this.scene.restart({ practice: true });
-      },
-      380,
-      58,
-      22
-    ).setDepth(85);
+    // Action buttons (top-level so hit areas work).
+    if (this.practice) {
+      this.makeButton(
+        W / 2,
+        420,
+        '▶  NEXT BRIDGE',
+        0xe8892c,
+        0xb5661c,
+        () => this.scene.restart({ practice: true }),
+        340,
+        58,
+        22
+      ).setDepth(85);
+      const best = Number(this.registry.get('practiceBest') ?? 0);
+      layer.add(
+        this.mkText(W / 2, 470, `Session best: ${best}`, 15, '#b8a88f', {
+          fontFamily: 'Arial, sans-serif',
+        }).setOrigin(0.5)
+      );
+    } else {
+      this.makeButton(
+        W / 2 - 108,
+        466,
+        '▶  PRACTICE',
+        0xe8892c,
+        0xb5661c,
+        () => this.scene.restart({ practice: true }),
+        200,
+        52,
+        18
+      ).setDepth(85);
+      this.makeButton(
+        W / 2 + 112,
+        466,
+        '🏆  LEADERBOARD',
+        0x6b4c3a,
+        0x4a3527,
+        () => void this.showLeaderboard(),
+        220,
+        52,
+        16
+      ).setDepth(85);
+    }
 
     if (!this.practice && !this.initData?.loggedIn) {
       layer.add(
-        this.mkText(W / 2, 496, 'Log in to Reddit to keep a streak.', 14, '#cccccc', {
+        this.mkText(W / 2, 540, 'Log in to Reddit to keep a streak.', 14, '#cccccc', {
           fontFamily: 'Arial, sans-serif',
         }).setOrigin(0.5)
       );
     }
+  }
+
+  // ---------- leaderboard ----------
+
+  private async showLeaderboard() {
+    let data: LeaderboardResponse | null = null;
+    try {
+      const res = await fetch('/api/leaderboard');
+      const json = (await res.json()) as LeaderboardResponse | { status: string };
+      if ('type' in json && json.type === 'leaderboard') data = json;
+    } catch {
+      data = null;
+    }
+
+    const layer = this.add.container(0, 0).setDepth(130);
+    const dim = this.add.rectangle(W / 2, H / 2, W, H, 0x1a120c, 0.6).setInteractive();
+    layer.add(dim);
+    const card = this.add.graphics();
+    card.fillStyle(0x241c16, 0.97);
+    card.fillRoundedRect(170, 120, W - 340, 360, 22);
+    card.lineStyle(2, 0xe8892c, 0.6);
+    card.strokeRoundedRect(170, 120, W - 340, 360, 22);
+    layer.add(card);
+    layer.add(this.mkText(W / 2, 158, '🏆 STREAK LEADERBOARD', 22, '#ffd98a').setOrigin(0.5));
+
+    if (!data || data.top.length === 0) {
+      layer.add(
+        this.mkText(W / 2, 280, data ? 'No streaks yet.\nBe the first!' : 'Could not load.', 18, '#ffffff', {
+          fontFamily: 'Arial, sans-serif',
+          align: 'center',
+        }).setOrigin(0.5)
+      );
+    } else {
+      data.top.forEach((row, i) => {
+        const y = 200 + i * 40;
+        const isYou = data?.you?.username === row.username;
+        if (isYou) {
+          const hl = this.add.graphics();
+          hl.fillStyle(0xe8892c, 0.18);
+          hl.fillRoundedRect(190, y - 16, W - 380, 32, 8);
+          layer.add(hl);
+        }
+        layer.add(this.mkText(212, y, `${i + 1}.`, 17, '#b8a88f').setOrigin(0, 0.5));
+        layer.add(
+          this.mkText(244, y, `u/${row.username}`, 17, isYou ? '#ffd98a' : '#ffffff', {
+            fontFamily: 'Arial, sans-serif',
+          }).setOrigin(0, 0.5)
+        );
+        layer.add(this.mkText(W - 212, y, `${row.streak} 🔥`, 17, '#ffffff').setOrigin(1, 0.5));
+      });
+      if (data.you && !data.top.some((r) => r.username === data?.you?.username)) {
+        const y = 200 + 5 * 40;
+        layer.add(
+          this.mkText(244, y, `u/${data.you.username} - you`, 16, '#ffd98a', {
+            fontFamily: 'Arial, sans-serif',
+          }).setOrigin(0, 0.5)
+        );
+        layer.add(this.mkText(W - 212, y, `${data.you.streak} 🔥`, 16, '#ffd98a').setOrigin(1, 0.5));
+      }
+    }
+
+    const close = this.makeButton(
+      W / 2,
+      440,
+      'CLOSE',
+      0x6b4c3a,
+      0x4a3527,
+      () => {
+        close.destroy();
+        layer.destroy();
+      },
+      180,
+      46,
+      17
+    );
+    close.setDepth(131);
+    dim.on('pointerdown', () => {
+      close.destroy();
+      layer.destroy();
+    });
   }
 }

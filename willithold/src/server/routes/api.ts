@@ -1,10 +1,20 @@
 import { Hono } from 'hono';
-import { context } from '@devvit/web/server';
-import type { ApiError, Guess, InitResponse, GuessResponse, Outcome, ResultResponse } from '../../shared/api';
+import { context, reddit } from '@devvit/web/server';
+import type {
+  ApiError,
+  Guess,
+  InitResponse,
+  GuessResponse,
+  LeaderboardResponse,
+  Outcome,
+  ResultResponse,
+} from '../../shared/api';
 import {
   ensurePuzzle,
   getCrowd,
   getGuess,
+  getLeaderboardTop,
+  getMetaStats,
   getOutcome,
   getStreaks,
   recordGuess,
@@ -100,11 +110,42 @@ api.post('/result', async (c) => {
     const outcome: Outcome = await recordOutcome(postId, date, claimed);
     const yourGuess = await getGuess(postId, date, userId);
     const correct = yourGuess !== null && yourGuess === outcome;
-    const { streak, best } = await settleStreak(postId, date, userId, correct);
+    // Spectators (no guess) don't get streak/stats churn.
+    const { streak, best } = yourGuess
+      ? await settleStreak(
+          postId,
+          date,
+          userId,
+          (await reddit.getCurrentUsername()) ?? 'anonymous',
+          correct,
+          outcome
+        )
+      : await getStreaks(userId);
+    const meta = await getMetaStats(userId);
     const crowd = await getCrowd(postId, date);
-    return c.json<ResultResponse>({ type: 'result', outcome, correct, streak, best, crowd });
+    return c.json<ResultResponse>({
+      type: 'result',
+      outcome,
+      correct,
+      streak,
+      best,
+      crowd,
+      accuracy: meta.accuracy,
+      rankTopPct: meta.rankTopPct,
+      recent: meta.recent,
+    });
   } catch (error) {
     console.error('result failed', error);
     return c.json<ApiError>({ status: 'error', message: 'result failed' }, 500);
+  }
+});
+
+api.get('/leaderboard', async (c) => {
+  try {
+    const { top, you } = await getLeaderboardTop(context.userId ?? null);
+    return c.json<LeaderboardResponse>({ type: 'leaderboard', top, you });
+  } catch (error) {
+    console.error('leaderboard failed', error);
+    return c.json<ApiError>({ status: 'error', message: 'leaderboard failed' }, 500);
   }
 });
