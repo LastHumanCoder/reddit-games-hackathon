@@ -32,7 +32,7 @@ export const GuessPanel = ({
         </p>
       ) : null}
       <p className="rtr-hint">
-        Don’t answer for yourself — predict where the{' '}
+        Don’t answer for yourself - predict where the{' '}
         <strong>crowd average</strong> will land.
       </p>
 
@@ -80,7 +80,7 @@ export const GuessPanel = ({
       ) : null}
       {!loggedIn ? (
         <p className="rtr-form-note">
-          Anyone can peek at the question — you need a Reddit account to play.
+          Anyone can peek at the question - you need a Reddit account to play.
         </p>
       ) : null}
     </section>

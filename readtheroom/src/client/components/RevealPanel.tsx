@@ -91,7 +91,7 @@ export const RevealPanel = ({ prompt, reveal }: RevealPanelProps) => {
 
       <p className="rtr-byline" aria-live="polite">
         {reveal.total} {reveal.total === 1 ? 'reader has' : 'readers have'}{' '}
-        weighed in — crowd average {reveal.mean}.
+        weighed in - crowd average {reveal.mean}.
       </p>
 
       <div className={`rtr-scoreline ${stage >= 3 ? 'is-in' : ''}`}>

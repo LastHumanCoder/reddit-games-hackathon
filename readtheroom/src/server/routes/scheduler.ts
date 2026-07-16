@@ -5,8 +5,8 @@ import { createGamePost } from '../core/post';
 export const scheduler = new Hono();
 
 /**
- * Daily cron (00:00 UTC): assign the day's prompt — popping the next
- * mod-approved community submission, or falling back to the bundled list —
+ * Daily cron (00:00 UTC): assign the day's prompt - popping the next
+ * mod-approved community submission, or falling back to the bundled list -
  * and publish a fresh game post so the subreddit gets a new round every day.
  */
 scheduler.post('/daily-prompt', async (c) => {

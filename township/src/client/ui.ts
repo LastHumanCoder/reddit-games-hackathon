@@ -181,7 +181,7 @@ const start = async (defId: string): Promise<void> => {
     }
     el('task-sheet-modal').hidden = true;
     applyCitizen(data.citizen);
-    toast('Work started — come back when it’s done!');
+    toast('Work started - come back when it’s done!');
   } catch (error) {
     console.error('start task failed:', error);
     toast('Could not start the job');
@@ -251,7 +251,7 @@ const claim = async (trade: (typeof TRADES)[number]): Promise<void> => {
     });
     const data = (await res.json()) as ClaimResponse | ApiError;
     if (!res.ok || !('citizen' in data)) {
-      toast('message' in data ? data.message : 'Claim failed — try again');
+      toast('message' in data ? data.message : 'Claim failed - try again');
       return;
     }
     el('claim-modal').hidden = true;
@@ -260,6 +260,6 @@ const claim = async (trade: (typeof TRADES)[number]): Promise<void> => {
     hooks?.onClaimed(data.citizen);
   } catch (error) {
     console.error('Claim failed:', error);
-    toast('Claim failed — try again');
+    toast('Claim failed - try again');
   }
 };

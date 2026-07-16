@@ -44,7 +44,7 @@ forms.post('/review-prompt', async (c) => {
       return c.json<UiResponse>(
         {
           showToast: ok
-            ? `Prompt #${promptId} approved — it will run on an upcoming day.`
+            ? `Prompt #${promptId} approved - it will run on an upcoming day.`
             : `Prompt #${promptId} was not found (already handled?).`,
         },
         200

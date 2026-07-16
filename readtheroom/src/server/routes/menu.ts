@@ -62,10 +62,10 @@ menu.post('/review-queue', async (c) => {
                 required: true,
                 options: [
                   {
-                    label: 'Approve — queue it as a daily prompt',
+                    label: 'Approve - queue it as a daily prompt',
                     value: 'approve',
                   },
-                  { label: 'Reject — remove it', value: 'reject' },
+                  { label: 'Reject - remove it', value: 'reject' },
                 ],
               },
             ],

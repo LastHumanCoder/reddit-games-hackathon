@@ -1,6 +1,6 @@
 import type { BuildingId, Trade } from '../../shared/types';
 
-/** Fixed world size — portrait, mobile-first. Camera covers and pans. */
+/** Fixed world size - portrait, mobile-first. Camera covers and pans. */
 export const WORLD_W = 1080;
 export const WORLD_H = 1620;
 

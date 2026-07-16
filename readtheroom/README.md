@@ -4,8 +4,8 @@
 [Devvit Web](https://developers.reddit.com/).
 
 Every day there is one question with a 0–100 spectrum between two labeled
-poles (e.g. **"Pineapple on pizza"** — *a crime against Italy ↔ a tropical
-masterpiece*). The skill is not having an opinion — it's predicting where the
+poles (e.g. **"Pineapple on pizza"** - *a crime against Italy ↔ a tropical
+masterpiece*). The skill is not having an opinion - it's predicting where the
 **Reddit crowd average** will land.
 
 ## The loop
@@ -29,7 +29,7 @@ Anonymous users can see the question; guessing triggers Reddit's login prompt
 - Players submit prompts in-app (question + two pole labels) → stored in a
   Redis **pending queue**.
 - Mods review via the subreddit menu item **"Read the Room: review prompt
-  queue"** — a form lists pending prompts and approves/rejects each.
+  queue"** - a form lists pending prompts and approves/rejects each.
 - Approved prompts form a FIFO queue. The daily cron pops the next approved
   prompt; if the queue is empty it falls back to **30 bundled hand-written
   prompts** (`src/server/core/prompts.ts`), looping with a persistent cursor.
@@ -70,7 +70,7 @@ src/
 | `POST /internal/scheduler/daily-prompt` | cron `0 0 * * *` | Assign the day's prompt + create the daily post |
 | `POST /internal/triggers/on-app-install` | trigger | Initialize day 1's prompt + first game post |
 
-### Redis data model (hashes, zsets, counters — no scans, no lists/sets)
+### Redis data model (hashes, zsets, counters - no scans, no lists/sets)
 
 | Key | Type | Contents |
 | --- | --- | --- |

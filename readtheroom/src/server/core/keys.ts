@@ -1,6 +1,6 @@
 /**
  * Central registry of every Redis key the app uses. Keys are stable and
- * date-scoped — no scanning, no sets/lists, only strings, hashes and zsets.
+ * date-scoped - no scanning, no sets/lists, only strings, hashes and zsets.
  */
 export const keys = {
   /** Hash: { id, question, left, right, author, day } for a given UTC date. */

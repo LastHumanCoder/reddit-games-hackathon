@@ -25,9 +25,9 @@ const TASK_ERROR_MESSAGES: Record<TaskError, string> = {
   'not-claimed': 'Claim a citizen first',
   'unknown-task': 'Unknown task',
   'wrong-trade': 'That’s not your trade',
-  'slots-full': 'Your hands are full — finish something first',
+  'slots-full': 'Your hands are full - finish something first',
   'already-running': 'That’s already in progress',
-  'not-ready': 'Not ready yet — patience!',
+  'not-ready': 'Not ready yet - patience!',
   'not-found': 'That task isn’t running',
 };
 
@@ -82,7 +82,7 @@ api.post('/claim', async (c) => {
     return c.json<ClaimResponse>({ type: 'claim', citizen });
   } catch (error) {
     console.error('POST /api/claim failed:', error);
-    return c.json<ApiError>({ status: 'error', message: 'Claim failed — try again' }, 500);
+    return c.json<ApiError>({ status: 'error', message: 'Claim failed - try again' }, 500);
   }
 });
 

@@ -9,7 +9,7 @@ type SubmitPromptProps = {
 
 type Note = { kind: 'ok' | 'err'; text: string } | null;
 
-/** "Got a divisive question?" — community prompt submissions for the mod queue. */
+/** "Got a divisive question?" - community prompt submissions for the mod queue. */
 export const SubmitPrompt = ({ onSubmit }: SubmitPromptProps) => {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState('');
