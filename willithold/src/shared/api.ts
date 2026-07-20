@@ -10,10 +10,8 @@ export type Crowd = {
 
 export type InitResponse = {
   type: 'init';
-  /** Deterministic seed for today's bridge. */
+  /** Deterministic per-post seed. Each post is its own permanent bridge. */
   seed: number;
-  /** UTC date key yyyy-mm-dd. */
-  date: string;
   loggedIn: boolean;
   alreadyPlayed: boolean;
   yourGuess: Guess | null;

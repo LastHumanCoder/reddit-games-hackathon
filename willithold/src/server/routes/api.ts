@@ -20,7 +20,6 @@ import {
   recordGuess,
   recordOutcome,
   settleStreak,
-  todayUtc,
 } from '../core/game';
 
 export const api = new Hono();
@@ -29,17 +28,15 @@ const isGuess = (v: unknown): v is Guess => v === 'hold' || v === 'collapse';
 
 api.get('/init', async (c) => {
   try {
-    const date = todayUtc();
     const postId = context.postId ?? 'global';
     const userId = context.userId ?? null;
-    const seed = await ensurePuzzle(postId, date);
-    const [outcome, crowd] = await Promise.all([getOutcome(postId, date), getCrowd(postId, date)]);
+    const seed = await ensurePuzzle(postId);
+    const [outcome, crowd] = await Promise.all([getOutcome(postId), getCrowd(postId)]);
 
     if (!userId) {
       return c.json<InitResponse>({
         type: 'init',
         seed,
-        date,
         loggedIn: false,
         alreadyPlayed: false,
         yourGuess: null,
@@ -51,13 +48,12 @@ api.get('/init', async (c) => {
     }
 
     const [yourGuess, streaks] = await Promise.all([
-      getGuess(postId, date, userId),
+      getGuess(postId, userId),
       getStreaks(userId),
     ]);
     return c.json<InitResponse>({
       type: 'init',
       seed,
-      date,
       loggedIn: true,
       alreadyPlayed: yourGuess !== null,
       yourGuess,
@@ -82,11 +78,10 @@ api.post('/guess', async (c) => {
     return c.json<ApiError>({ status: 'error', message: 'Guess must be hold or collapse.' }, 400);
   }
   try {
-    const date = todayUtc();
     const postId = context.postId ?? 'global';
-    await ensurePuzzle(postId, date);
-    await recordGuess(postId, date, userId, body.guess);
-    const crowd = await getCrowd(postId, date);
+    await ensurePuzzle(postId);
+    await recordGuess(postId, userId, body.guess);
+    const crowd = await getCrowd(postId);
     return c.json<GuessResponse>({ type: 'guess', crowd });
   } catch (error) {
     console.error('guess failed', error);
@@ -105,16 +100,14 @@ api.post('/result', async (c) => {
     return c.json<ApiError>({ status: 'error', message: 'Invalid outcome.' }, 400);
   }
   try {
-    const date = todayUtc();
     const postId = context.postId ?? 'global';
-    const outcome: Outcome = await recordOutcome(postId, date, claimed);
-    const yourGuess = await getGuess(postId, date, userId);
+    const outcome: Outcome = await recordOutcome(postId, claimed);
+    const yourGuess = await getGuess(postId, userId);
     const correct = yourGuess !== null && yourGuess === outcome;
     // Spectators (no guess) don't get streak/stats churn.
     const { streak, best } = yourGuess
       ? await settleStreak(
           postId,
-          date,
           userId,
           (await reddit.getCurrentUsername()) ?? 'anonymous',
           correct,
@@ -122,7 +115,7 @@ api.post('/result', async (c) => {
         )
       : await getStreaks(userId);
     const meta = await getMetaStats(userId);
-    const crowd = await getCrowd(postId, date);
+    const crowd = await getCrowd(postId);
     return c.json<ResultResponse>({
       type: 'result',
       outcome,

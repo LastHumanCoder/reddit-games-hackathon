@@ -2,12 +2,9 @@ import { redis } from '@devvit/web/server';
 import type { Crowd, Guess, Outcome } from '../../shared/api';
 import { keys } from './keys';
 
-/** Current UTC date key, yyyy-mm-dd. */
-export const todayUtc = (): string => new Date().toISOString().slice(0, 10);
-
-/** Deterministic 32-bit seed from date + post id (FNV-1a). */
-export const seedFor = (date: string, postId: string): number => {
-  const s = `${date}|${postId}`;
+/** Deterministic 32-bit seed from the post id (FNV-1a). Never changes. */
+export const seedFor = (postId: string): number => {
+  const s = `bridge|${postId}`;
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -16,62 +13,52 @@ export const seedFor = (date: string, postId: string): number => {
   return h >>> 0;
 };
 
-export const ensurePuzzle = async (postId: string, date: string): Promise<number> => {
-  const key = keys.puzzle(postId, date);
+export const ensurePuzzle = async (postId: string): Promise<number> => {
+  const key = keys.puzzle(postId);
   const existing = await redis.hGet(key, 'seed');
   if (existing) return Number(existing);
-  const seed = seedFor(date, postId);
+  const seed = seedFor(postId);
   await redis.hSet(key, { seed: String(seed) });
   return seed;
 };
 
-export const getOutcome = async (postId: string, date: string): Promise<Outcome | null> => {
-  const raw = await redis.hGet(keys.puzzle(postId, date), 'outcome');
+export const getOutcome = async (postId: string): Promise<Outcome | null> => {
+  const raw = await redis.hGet(keys.puzzle(postId), 'outcome');
   return raw === 'hold' || raw === 'collapse' ? raw : null;
 };
 
-export const getCrowd = async (postId: string, date: string): Promise<Crowd> => {
-  const h = await redis.hGetAll(keys.tally(postId, date));
+export const getCrowd = async (postId: string): Promise<Crowd> => {
+  const h = await redis.hGetAll(keys.tally(postId));
   return {
     hold: Number(h['hold'] ?? '0'),
     collapse: Number(h['collapse'] ?? '0'),
   };
 };
 
-export const getGuess = async (
-  postId: string,
-  date: string,
-  userId: string
-): Promise<Guess | null> => {
-  const raw = await redis.get(keys.guess(postId, date, userId));
+export const getGuess = async (postId: string, userId: string): Promise<Guess | null> => {
+  const raw = await redis.get(keys.guess(postId, userId));
   return raw === 'hold' || raw === 'collapse' ? raw : null;
 };
 
-/** Records the player's one guess for today. Returns false if already guessed. */
+/** Records the player's one guess for this post. Returns false if already guessed. */
 export const recordGuess = async (
   postId: string,
-  date: string,
   userId: string,
   guess: Guess
 ): Promise<boolean> => {
-  const key = keys.guess(postId, date, userId);
+  const key = keys.guess(postId, userId);
   const existing = await redis.get(key);
   if (existing) return false;
   await redis.set(key, guess);
-  await redis.expire(key, 60 * 60 * 24 * 3);
-  await redis.hIncrBy(keys.tally(postId, date), guess, 1);
+  await redis.hIncrBy(keys.tally(postId), guess, 1);
   return true;
 };
 
 /** Stores the sim outcome first-write-wins; returns the canonical outcome. */
-export const recordOutcome = async (
-  postId: string,
-  date: string,
-  outcome: Outcome
-): Promise<Outcome> => {
-  const existing = await getOutcome(postId, date);
+export const recordOutcome = async (postId: string, outcome: Outcome): Promise<Outcome> => {
+  const existing = await getOutcome(postId);
   if (existing) return existing;
-  await redis.hSet(keys.puzzle(postId, date), { outcome });
+  await redis.hSet(keys.puzzle(postId), { outcome });
   return outcome;
 };
 
@@ -105,17 +92,15 @@ export type MetaStats = {
  */
 export const settleStreak = async (
   postId: string,
-  date: string,
   userId: string,
   username: string,
   correct: boolean,
   outcome: Outcome
 ): Promise<{ streak: number; best: number }> => {
-  const settledKey = `settled:${postId}:${date}:${userId}`;
+  const settledKey = `settled:${postId}:${userId}`;
   const already = await redis.get(settledKey);
   if (already) return getStreaks(userId);
   await redis.set(settledKey, '1');
-  await redis.expire(settledKey, 60 * 60 * 24 * 3);
 
   let streak: number;
   if (correct) {

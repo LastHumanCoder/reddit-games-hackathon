@@ -20,13 +20,21 @@
   "menu": {
     "items": [
       {
-        "label": "Post today's bridge (Will It Hold?)",
-        "description": "Create a Will It Hold? post",
+        "label": "Create Will It Hold post",
+        "description": "Post a fresh bridge right now",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
       }
     ]
+  },
+  "scheduler": {
+    "tasks": {
+      "new-bridge": {
+        "endpoint": "/internal/scheduler/new-bridge",
+        "cron": "0 */6 * * *"
+      }
+    }
   },
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install"

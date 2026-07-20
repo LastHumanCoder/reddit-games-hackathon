@@ -164,7 +164,6 @@ export class BridgeScene extends Phaser.Scene {
       data = {
         type: 'init',
         seed: (Date.now() / 86400000) | 0,
-        date: new Date().toISOString().slice(0, 10),
         loggedIn: false,
         alreadyPlayed: false,
         yourGuess: null,
@@ -596,9 +595,10 @@ export class BridgeScene extends Phaser.Scene {
 
   private updateCountdown() {
     if (!this.countdownText || !this.countdownText.active) return;
+    // Next 6-hour UTC boundary (00/06/12/18).
     const now = new Date();
     const next = new Date(now);
-    next.setUTCHours(24, 0, 0, 0);
+    next.setUTCHours(Math.floor(now.getUTCHours() / 6) * 6 + 6, 0, 0, 0);
     const ms = next.getTime() - now.getTime();
     const h = Math.floor(ms / 3600000);
     const m = Math.floor((ms % 3600000) / 60000);
@@ -628,9 +628,9 @@ export class BridgeScene extends Phaser.Scene {
 
     const rows: [string, string][] = [
       ['🔍', 'Study the bridge. Sketchy planks? Missing hangers?'],
-      ['🟢🔴', 'Call it: HOLD or COLLAPSE. One call per day.'],
+      ['🟢🔴', 'Call it: HOLD or COLLAPSE. One call per bridge.'],
       ['⚙️', 'Physics decides. No tricks, no scripts.'],
-      ['🔥', 'Nail it daily to build your streak.'],
+      ['🔥', 'Nail your calls to build a streak.'],
     ];
     rows.forEach(([icon, text], i) => {
       const y = 210 + i * 56;
@@ -1011,7 +1011,7 @@ export class BridgeScene extends Phaser.Scene {
     const line1 = this.mkText(
       W / 2,
       100,
-      `You already called today's bridge: ${icon} ${guess.toUpperCase()}`,
+      `You already called this bridge: ${icon} ${guess.toUpperCase()}`,
       21,
       '#ffffff'
     )
@@ -1384,7 +1384,7 @@ export class BridgeScene extends Phaser.Scene {
       }
 
       layer.add(
-        this.mkText(W / 2, 508, 'Come back tomorrow - new bridge daily.', 14, '#ffd98a', {
+        this.mkText(W / 2, 508, 'New bridge every 6 hours.', 14, '#ffd98a', {
           fontFamily: 'Arial, sans-serif',
         }).setOrigin(0.5)
       );
